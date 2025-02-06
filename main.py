@@ -1,7 +1,8 @@
+import os
+import random
+import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
 # Укажите ваш токен бота
 API_TOKEN = "ВАШ_ТОКЕН"
