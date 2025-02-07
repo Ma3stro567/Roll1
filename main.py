@@ -1,145 +1,105 @@
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils import executor
-from aiogram.dispatcher.filters import Text
+import random
 
-import logging
+API_TOKEN = '8152843550:AAH2ty2PVrJ3_gDllmE9sNn9r4XkveDTK_k'
 
-# Настройка логгирования
-logging.basicConfig(level=logging.INFO)
-
-# Ваш токен бота
-BOT_TOKEN = "8152843550:AAH2ty2PVrJ3_gDllmE9sNn9r4XkveDTK_k"
-
-bot = Bot(token=BOT_TOKEN)
+# Инициализация бота и диспетчера
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
 # Словарь для хранения данных пользователей
-users_data = {}
+user_data = {}
 
-# Минимальные ограничения
-MIN_BET = 0.05
-MIN_TOP_UP = 0.05
-MIN_WITHDRAW = 0.05
+# Главное меню
+def main_menu():
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("🎲 Играть", callback_data="play_game"))
+    keyboard.add(InlineKeyboardButton("💰 Сделать ставку", callback_data="set_bet"))
+    return keyboard
 
-# Основная клавиатура
-main_menu_kb = InlineKeyboardMarkup(row_width=1)
-main_menu_kb.add(
-    InlineKeyboardButton("🎮 Играть", callback_data="play"),
-    InlineKeyboardButton("👤 Профиль", callback_data="profile"),
-)
-
-# Клавиатура профиля
-profile_kb = InlineKeyboardMarkup(row_width=2)
-profile_kb.add(
-    InlineKeyboardButton("➕ Пополнить", callback_data="top_up"),
-    InlineKeyboardButton("➖ Вывести", callback_data="withdraw"),
-    InlineKeyboardButton("🔙 Назад", callback_data="back_to_main")
-)
-
-# Обработка команды /start
-@dp.message_handler(commands=["start"])
+# Обработчик команды /start
+@dp.message_handler(commands=['start'])
 async def start_command(message: types.Message):
     user_id = message.from_user.id
+    if user_id not in user_data:
+        user_data[user_id] = {"balance": 10.0, "bet": 0.05}  # Начальный баланс и минимальная ставка
+    await message.answer(f"👋 Привет, {message.from_user.first_name}!\n"
+                         f"Ваш баланс: {user_data[user_id]['balance']} USDT\n"
+                         f"Минимальная ставка: 0.05 USDT", reply_markup=main_menu())
 
-    # Инициализация данных пользователя
-    if user_id not in users_data:
-        users_data[user_id] = {"balance": 0.0}
-
-    await message.answer(
-        "🎉 Добро пожаловать в бота! 🎉\nВыберите действие ниже:",
-        reply_markup=main_menu_kb
-    )
-
-# Обработка нажатия кнопки "Играть"
-@dp.callback_query_handler(Text(equals="play"))
-async def play_game(callback_query: types.CallbackQuery):
+# Обработчик кнопок
+@dp.callback_query_handler()
+async def callback_handler(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
+    data = callback_query.data
 
-    if users_data[user_id]["balance"] < MIN_BET:
-        await callback_query.message.edit_text(
-            f"❌ У вас недостаточно средств для игры! Минимальная ставка: {MIN_BET} USDT.",
-            reply_markup=main_menu_kb
-        )
+    if data == "play_game":
+        await callback_query.message.answer("🎲 Напишите в чат число от 1 до 6, чтобы сыграть!")
+    elif data == "set_bet":
+        await callback_query.message.answer("💰 Напишите сумму вашей ставки в формате: 0.05, 1.0 и т.д.")
+    await callback_query.answer()
+
+# Обработчик текстовых сообщений для ставок и игры
+@dp.message_handler()
+async def handle_message(message: types.Message):
+    user_id = message.from_user.id
+
+    if user_id not in user_data:
+        await message.answer("⚠️ Сначала нажмите /start.")
         return
 
-    # Вычитаем ставку и рассчитываем выигрыш
-    users_data[user_id]["balance"] -= MIN_BET
-    if True:  # Здесь можете вставить свою логику выигрыша
-        win_amount = MIN_BET * 1.80
-        users_data[user_id]["balance"] += win_amount
-        await callback_query.message.edit_text(
-            f"🎉 Вы выиграли {win_amount:.2f} USDT! Ваш баланс: {users_data[user_id]['balance']:.2f} USDT.",
-            reply_markup=main_menu_kb
-        )
-    else:
-        await callback_query.message.edit_text(
-            f"😢 Вы проиграли! Ваш баланс: {users_data[user_id]['balance']:.2f} USDT.",
-            reply_markup=main_menu_kb
-        )
+    # Обработка ставки
+    if user_data[user_id].get("waiting_for_bet"):
+        try:
+            bet = float(message.text)
+            if bet < 0.05:
+                await message.answer("⚠️ Минимальная ставка 0.05 USDT.")
+                return
+            if bet > user_data[user_id]["balance"]:
+                await message.answer("⚠️ Недостаточно средств для ставки.")
+                return
+            user_data[user_id]["bet"] = bet
+            user_data[user_id]["waiting_for_bet"] = False
+            await message.answer(f"✅ Ваша ставка установлена: {bet} USDT.", reply_markup=main_menu())
+        except ValueError:
+            await message.answer("⚠️ Введите корректное число для ставки.")
+        return
 
-# Обработка нажатия кнопки "Профиль"
-@dp.callback_query_handler(Text(equals="profile"))
-async def profile(callback_query: types.CallbackQuery):
+    # Обработка игры
+    try:
+        guess = int(message.text)
+        if guess < 1 or guess > 6:
+            await message.answer("⚠️ Введите число от 1 до 6.")
+            return
+
+        if user_data[user_id]["bet"] > user_data[user_id]["balance"]:
+            await message.answer("⚠️ Недостаточно средств для игры. Пополните баланс или уменьшите ставку.")
+            return
+
+        # Бросок кубика
+        roll = random.randint(1, 6)
+        if guess == roll:
+            winnings = user_data[user_id]["bet"] * 2
+            user_data[user_id]["balance"] += winnings
+            await message.answer(f"🎉 Ура! Выпало {roll}. Вы угадали и выиграли {winnings} USDT! "
+                                 f"Ваш баланс: {user_data[user_id]['balance']} USDT.")
+        else:
+            user_data[user_id]["balance"] -= user_data[user_id]["bet"]
+            await message.answer(f"😢 Выпало {roll}. Вы проиграли. Ваш баланс: {user_data[user_id]['balance']} USDT.")
+    except ValueError:
+        await message.answer("⚠️ Введите корректное число от 1 до 6.")
+
+# Установка ожидания ставки
+@dp.callback_query_handler(lambda c: c.data == "set_bet")
+async def set_bet_callback(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-    balance = users_data[user_id]["balance"]
+    user_data[user_id]["waiting_for_bet"] = True
+    await bot.send_message(user_id, "💰 Напишите сумму вашей ставки.")
 
-    await callback_query.message.edit_text(
-        f"👤 Ваш профиль:\n💰 Баланс: {balance:.2f} USDT",
-        reply_markup=profile_kb
-    )
-
-# Обработка кнопки "Пополнить"
-@dp.callback_query_handler(Text(equals="top_up"))
-async def top_up(callback_query: types.CallbackQuery):
-    await callback_query.message.edit_text(
-        f"➕ Минимальное пополнение: {MIN_TOP_UP} USDT. Введите сумму пополнения:"
-    )
-
-@dp.message_handler(lambda message: message.text.isdigit())
-async def handle_top_up(message: types.Message):
-    user_id = message.from_user.id
-    amount = float(message.text)
-
-    if amount < MIN_TOP_UP:
-        await message.answer(f"❌ Сумма пополнения должна быть не менее {MIN_TOP_UP} USDT.")
-        return
-
-    users_data[user_id]["balance"] += amount
-    await message.answer(f"✅ Ваш баланс успешно пополнен на {amount:.2f} USDT. Текущий баланс: {users_data[user_id]['balance']:.2f} USDT.")
-
-# Обработка кнопки "Вывести"
-@dp.callback_query_handler(Text(equals="withdraw"))
-async def withdraw(callback_query: types.CallbackQuery):
-    await callback_query.message.edit_text(
-        f"➖ Минимальный вывод: {MIN_WITHDRAW} USDT. Введите сумму вывода:"
-    )
-
-@dp.message_handler(lambda message: message.text.isdigit())
-async def handle_withdraw(message: types.Message):
-    user_id = message.from_user.id
-    amount = float(message.text)
-
-    if amount < MIN_WITHDRAW:
-        await message.answer(f"❌ Сумма вывода должна быть не менее {MIN_WITHDRAW} USDT.")
-        return
-
-    if amount > users_data[user_id]["balance"]:
-        await message.answer("❌ Недостаточно средств на балансе.")
-        return
-
-    users_data[user_id]["balance"] -= amount
-    await message.answer(f"✅ Вы успешно вывели {amount:.2f} USDT. Текущий баланс: {users_data[user_id]['balance']:.2f} USDT.")
-
-# Обработка кнопки "Назад"
-@dp.callback_query_handler(Text(equals="back_to_main"))
-async def back_to_main(callback_query: types.CallbackQuery):
-    await callback_query.message.edit_text(
-        "⬅️ Вы вернулись в главное меню:",
-        reply_markup=main_menu_kb
-    )
-
-if __name__ == "__main__":
+# Запуск бота
+if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
+    
