@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 
 # Укажите ваш токен бота
-API_TOKEN = "ВАШ_ТОКЕН"
+API_TOKEN = "8152843550:AAH2ty2PVrJ3_gDllmE9sNn9r4XkveDTK_k"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
