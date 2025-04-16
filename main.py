@@ -1,105 +1,129 @@
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
-import random
+import logging
+from aiohttp import web
+from aiogram import Bot, Dispatcher, types, executor
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
 
-API_TOKEN = '8152843550:AAH2ty2PVrJ3_gDllmE9sNn9r4XkveDTK_k'
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
 
-# Инициализация бота и диспетчера
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
+# Инициализация бота и хранилища
+bot = Bot(token='7927818935:AAEfG0GnN3dhGqG4ql3DTPj5vR29JvDVTe0')
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
-# Словарь для хранения данных пользователей
-user_data = {}
+# Временное хранилище данных
+users_data = {}
+withdraw_requests = []
+stats = {'total_users': 0, 'messages_today': 0}
 
-# Главное меню
-def main_menu():
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("🎲 Играть", callback_data="play_game"))
-    keyboard.add(InlineKeyboardButton("💰 Сделать ставку", callback_data="set_bet"))
-    return keyboard
+# Состояния для админ-панели
+class AdminStates(StatesGroup):
+    admin_password = State()
+    broadcast_message = State()
+    add_stars = State()
 
-# Обработчик команды /start
+# Веб-сервер для Render
+async def web_server():
+    app = web.Application()
+    app.router.add_get('/', lambda request: web.Response(text="Бот работает! 🚀"))
+    return app
+
+# Обработчики бота
 @dp.message_handler(commands=['start'])
-async def start_command(message: types.Message):
+async def cmd_start(message: types.Message):
     user_id = message.from_user.id
-    if user_id not in user_data:
-        user_data[user_id] = {"balance": 10.0, "bet": 0.05}  # Начальный баланс и минимальная ставка
-    await message.answer(f"👋 Привет, {message.from_user.first_name}!\n"
-                         f"Ваш баланс: {user_data[user_id]['balance']} USDT\n"
-                         f"Минимальная ставка: 0.05 USDT", reply_markup=main_menu())
-
-# Обработчик кнопок
-@dp.callback_query_handler()
-async def callback_handler(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    data = callback_query.data
-
-    if data == "play_game":
-        await callback_query.message.answer("🎲 Напишите в чат число от 1 до 6, чтобы сыграть!")
-    elif data == "set_bet":
-        await callback_query.message.answer("💰 Напишите сумму вашей ставки в формате: 0.05, 1.0 и т.д.")
-    await callback_query.answer()
-
-# Обработчик текстовых сообщений для ставок и игры
-@dp.message_handler()
-async def handle_message(message: types.Message):
-    user_id = message.from_user.id
-
-    if user_id not in user_data:
-        await message.answer("⚠️ Сначала нажмите /start.")
-        return
-
-    # Обработка ставки
-    if user_data[user_id].get("waiting_for_bet"):
-        try:
-            bet = float(message.text)
-            if bet < 0.05:
-                await message.answer("⚠️ Минимальная ставка 0.05 USDT.")
-                return
-            if bet > user_data[user_id]["balance"]:
-                await message.answer("⚠️ Недостаточно средств для ставки.")
-                return
-            user_data[user_id]["bet"] = bet
-            user_data[user_id]["waiting_for_bet"] = False
-            await message.answer(f"✅ Ваша ставка установлена: {bet} USDT.", reply_markup=main_menu())
-        except ValueError:
-            await message.answer("⚠️ Введите корректное число для ставки.")
-        return
-
-    # Обработка игры
-    try:
-        guess = int(message.text)
-        if guess < 1 or guess > 6:
-            await message.answer("⚠️ Введите число от 1 до 6.")
-            return
-
-        if user_data[user_id]["bet"] > user_data[user_id]["balance"]:
-            await message.answer("⚠️ Недостаточно средств для игры. Пополните баланс или уменьшите ставку.")
-            return
-
-        # Бросок кубика
-        roll = random.randint(1, 6)
-        if guess == roll:
-            winnings = user_data[user_id]["bet"] * 2
-            user_data[user_id]["balance"] += winnings
-            await message.answer(f"🎉 Ура! Выпало {roll}. Вы угадали и выиграли {winnings} USDT! "
-                                 f"Ваш баланс: {user_data[user_id]['balance']} USDT.")
-        else:
-            user_data[user_id]["balance"] -= user_data[user_id]["bet"]
-            await message.answer(f"😢 Выпало {roll}. Вы проиграли. Ваш баланс: {user_data[user_id]['balance']} USDT.")
-    except ValueError:
-        await message.answer("⚠️ Введите корректное число от 1 до 6.")
-
-# Установка ожидания ставки
-@dp.callback_query_handler(lambda c: c.data == "set_bet")
-async def set_bet_callback(callback_query: types.CallbackQuery):
-    user_id = callback_query.from_user.id
-    user_data[user_id]["waiting_for_bet"] = True
-    await bot.send_message(user_id, "💰 Напишите сумму вашей ставки.")
-
-# Запуск бота
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    if user_id not in users_data:
+        users_data[user_id] = {
+            'stars': 0.0,
+            'referrals': 0,
+            'username': message.from_user.username
+        }
+        stats['total_users'] += 1
     
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("👤 Профиль", callback_data="profile"))
+    keyboard.add(types.InlineKeyboardButton("💫 Рефералка", callback_data="referral"))
+    if user_id == 5083696616:  # Замените ADMIN_ID на ваш ID
+        keyboard.add(types.InlineKeyboardButton("🛠 Админ-панель", callback_data="admin_panel"))
+    
+    await message.answer("Добро пожаловать! 🚀", reply_markup=keyboard)
+
+@dp.callback_query_handler(lambda c: c.data == 'profile')
+async def show_profile(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    user = users_data[user_id]
+    
+    text = f"🌟 Ваш профиль:\n\n⭐ Звезд: {user['stars']}\n👥 Рефералов: {user['referrals']}"
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("💸 Вывести (от 25⭐)", callback_data="withdraw"))
+    keyboard.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back"))
+    
+    await bot.edit_message_text(text, callback_query.message.chat.id, 
+                              callback_query.message.message_id, 
+                              reply_markup=keyboard)
+
+@dp.callback_query_handler(lambda c: c.data == 'referral')
+async def show_referral(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    ref_link = f"https://t.me/Ma3stroStarsbot?start={user_id}"
+    
+    text = f"🎯 Ваша реферальная ссылка:\n\n{ref_link}\n\nЗа каждого реферала вы получаете 0.25⭐"
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton("🔙 Назад", callback_data="back"))
+    
+    await bot.edit_message_text(text, callback_query.message.chat.id, 
+                              callback_query.message.message_id, 
+                              reply_markup=keyboard)
+
+# Админ-панель
+@dp.callback_query_handler(lambda c: c.data == 'admin_panel')
+async def admin_panel(callback_query: types.CallbackQuery):
+    await AdminStates.admin_password.set()
+    await bot.send_message(callback_query.from_user.id, "Введите пароль:")
+
+@dp.message_handler(state=AdminStates.admin_password)
+async def check_admin_password(message: types.Message, state: FSMContext):
+    if message.text == "popopo12":
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(types.InlineKeyboardButton("📢 Рассылка", callback_data="broadcast"))
+        keyboard.add(types.InlineKeyboardButton("📊 Статистика", callback_data="stats"))
+        keyboard.add(types.InlineKeyboardButton("📨 Заявки", callback_data="withdraw_requests"))
+        keyboard.add(types.InlineKeyboardButton("🎁 Начислить звезды", callback_data="add_stars"))
+        await message.answer("Админ-панель:", reply_markup=keyboard)
+        await state.finish()
+    else:
+        await message.answer("Неверный пароль!")
+        await state.finish()
+
+# Остальные обработчики админ-панели
+@dp.callback_query_handler(lambda c: c.data == 'broadcast')
+async def broadcast(callback_query: types.CallbackQuery):
+    await AdminStates.broadcast_message.set()
+    await bot.send_message(callback_query.from_user.id, "Отправьте сообщение для рассылки:")
+
+@dp.message_handler(state=AdminStates.broadcast_message)
+async def send_broadcast(message: types.Message, state: FSMContext):
+    for user_id in users_data:
+        try:
+            await bot.send_message(user_id, message.text)
+        except:
+            pass
+    await state.finish()
+
+@dp.callback_query_handler(lambda c: c.data == 'stats')
+async def show_stats(callback_query: types.CallbackQuery):
+    text = f"📊 Статистика:\n\n👥 Пользователей: {stats['total_users']}\n💬 Сообщений сегодня: {stats['messages_today']}"
+    await bot.send_message(callback_query.from_user.id, text)
+
+# Запуск веб-сервера и бота
+async def on_startup(dp):
+    app = await web_server()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+
+if __name__ == '__main__':
+    executor.start_polling(dp, on_startup=on_startup, skip_updates=True)
