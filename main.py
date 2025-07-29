@@ -694,8 +694,8 @@ def main():
 
 if __name__ == "__main__":
     main().reply_text("❌ Неверный формат! Используйте: ID КЛИКИ")
-            
-            context.user_data['waiting_for'] = None
+
+        context.user_data['waiting_for'] = None
             
         elif waiting_for == 'create_promo':
             try:
