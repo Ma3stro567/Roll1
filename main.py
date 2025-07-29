@@ -318,7 +318,7 @@ class TelegramClickerBot:
             await update.callback_query.answer("🚫 Вы заблокированы в этом боте!", show_alert=True)
             return
 
-        ref_link = f"https://t.me/your_bot_username?start={user_id}"
+        ref_link = f"https://t.me/clicker767bot?start={user_id}"
         
         text = f"""
 👥 **РЕФЕРАЛЬНАЯ СИСТЕМА** 👥
@@ -673,7 +673,7 @@ class TelegramClickerBot:
 
 def main():
     # Замените YOUR_BOT_TOKEN на токен вашего бота
-    TOKEN = "7667087861:AAFU2GdxT1tFc1xc7glGW2MF9G4Efr4n4Ko"
+    TOKEN = "7667087861:AAFWHTfRfMwrQjriPtFJnzNE4eY7444eqzA"
     
     bot = TelegramClickerBot(TOKEN)
     application = Application.builder().token(TOKEN).build()
