@@ -693,18 +693,4 @@ def main():
     application.run_polling()
 
 if __name__ == "__main__":
-    main().reply_text("❌ Неверный формат! Используйте: ID КЛИКИ")
-
-        context.user_data['waiting_for'] = None
-            
-        elif waiting_for == 'create_promo':
-            try:
-                parts = update.message.text.split()
-                code = parts[0].upper()
-                clicks = int(parts[1])
-                max_uses = int(parts[2])
-                
-                self.promo_codes[code] = PromoCode(code, clicks, max_uses)
-                await update.message.reply_text(f"✅ Промокод {code} создан!\n💰 Кликов: {clicks:,}\n📊 Использований: {max_uses}")
-            except:
-                await update.message
+    main()
