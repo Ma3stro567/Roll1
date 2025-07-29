@@ -673,7 +673,7 @@ class TelegramClickerBot:
 
 def main():
     # Замените YOUR_BOT_TOKEN на токен вашего бота
-    TOKEN = "7667087861:AAGqgCim6NqDYOPB8kj5LVz1JWFerA72P5Q"
+    TOKEN = "7667087861:AAFU2GdxT1tFc1xc7glGW2MF9G4Efr4n4Ko"
     
     bot = TelegramClickerBot(TOKEN)
     application = Application.builder().token(TOKEN).build()
